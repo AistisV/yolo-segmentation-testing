@@ -1,0 +1,15 @@
+# Dataset and anything derived from it stay out of the repo (licences)
+gt/
+gt_full/
+gt_cubi/
+results/
+results_modal/
+seg_preds*/
+*.png
+*.jpg
+*.jsonl
+*.pt
+runs/
+__pycache__/
+.env
+!docs/*.png
