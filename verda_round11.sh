@@ -57,7 +57,9 @@ cd code
 python3 seg_data.py --gt none --images none --split split_full.json --out $W/sd \
     --gt2 $W/gt11 --images2 $W/orig11 --split2 $W/split_cubi.json --limit2 3000 --only2
 echo "$(date -u +%H:%M:%S) training (watch metrics/mAP50 per epoch in $W/ckpt/yolo11c/results.csv)"
-python3 yolo_train.py --data $W/sd/yolo/data.yaml --hours 1.0 --name yolo11c --model yolo11m.pt --batch 32 --project $W/ckpt
+NG=$(nvidia-smi -L | wc -l); DEV=$(seq -s, 0 $((NG - 1)))
+echo "GPUs: $NG ($DEV)"
+python3 yolo_train.py --data $W/sd/yolo/data.yaml --hours 1.0 --name yolo11c --model yolo11m.pt --batch $((32 * NG)) --project $W/ckpt --device $DEV
 for k in cubi_eval cubi_val; do
   python3 seg_predict.py --unet none --yolo $W/ckpt/yolo11c/weights/best.pt --images $W/data/cubicasa5k \
       --plans-file $W/split_r10.json --key $k --out $W/preds11 | tail -2
