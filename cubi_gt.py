@@ -111,13 +111,43 @@ def parse_svg(data, W, H):
                           "bbox": [round(min(xs), 1), round(min(ys), 1), round(max(xs), 1), round(max(ys), 1)]})
     return {"source": "cubicasa5k", "image_size": [W, H], "scale": {"px_per_m": None}, "apartments": [], "rooms": rooms, "items": items}
 
+_ZF = None
+
+
+def _convert(job):
+    zp, n, name, (W, H), orig_out, overlays, draw = job
+    global _ZF
+    if _ZF is None: _ZF = zipfile.ZipFile(zp)
+    try:
+        if orig_out:
+            im = Image.open(_ZF.open(n[:-len("model.svg")] + "F1_scaled.png")).convert("RGB")
+            f_ = 2000 / max(im.size); W, H = round(im.width * f_), round(im.height * f_)
+            im = im.resize((W, H), Image.BICUBIC)
+        g = parse_svg(_ZF.read(n), W, H)
+        if orig_out:
+            im.save(os.path.join(orig_out, name + ".png"))
+            if overlays and draw:
+                from PIL import ImageDraw
+                ov = im.copy(); d = ImageDraw.Draw(ov)
+                for r in g["rooms"]: d.polygon([tuple(p) for p in r["polygon"]], outline=(0, 160, 0))
+                for it in g["items"]: d.rectangle(it["bbox"], outline=(230, 0, 0), width=3); d.text(tuple(it["bbox"][:2]), it["type"], fill=(0, 0, 230))
+                ov.save(os.path.join(overlays, name + ".jpg"), quality=80)
+        return name, g
+    except Exception:
+        return name, None
+
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--zip", required=True); ap.add_argument("--images", required=True)
     ap.add_argument("--questions", required=True); ap.add_argument("--out", required=True); ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--orig-out", default="", help="write CubiCasa's own F1_scaled.png (the frame model.svg is drawn in), resized to "
+                    "max side 2000, with labels in that frame. Stoa's PNGs are re-cropped/rotated copies, so SVG labels do not fit them")
+    ap.add_argument("--overlays", default="", help="draw the labels on the first few images here, to check alignment by eye")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
+    for d_ in (a.orig_out, a.overlays):
+        if d_: os.makedirs(d_, exist_ok=True)
     ours = {os.path.splitext(f)[0] for f in os.listdir(a.images) if f.endswith(".png")}
     zf = zipfile.ZipFile(a.zip)
     svgs = [n for n in zf.namelist() if n.endswith("model.svg")]
@@ -127,21 +157,22 @@ if __name__ == "__main__":
         sizes = dict(zip(sorted(ours), ex.map(lambda nm: Image.open(os.path.join(a.images, nm + ".png")).size, sorted(ours))))
     print("read", len(sizes), "image sizes", flush=True)
     done = 0; miss = 0; bad = 0; inside = tot_items = 0
-    for k, n in enumerate(svgs):
-        if k % 500 == 0: print(f"svg {k}/{len(svgs)}, converted {done}", flush=True)
-        parts = n.strip("/").split("/")
-        name = f"{parts[-3]}-{parts[-2]}"
+    jobs = []
+    for n in svgs:
+        parts = n.strip("/").split("/"); name = f"{parts[-3]}-{parts[-2]}"
         if name not in ours: miss += 1; continue
-        W, H = sizes[name]
-        try:
-            g = parse_svg(zf.read(n), W, H)
-        except Exception as e:
-            bad += 1; continue
-        for it in g["items"]:
-            tot_items += 1; inside += 0 <= it["point"][0] <= W and 0 <= it["point"][1] <= H
-        json.dump(g, open(os.path.join(a.out, name + ".json"), "w"))
-        done += 1
-        if a.limit and done >= a.limit: break
+        jobs.append((a.zip, n, name, sizes[name], a.orig_out, a.overlays, len(jobs) < 6))
+        if a.limit and len(jobs) >= a.limit: break
+    from multiprocessing import Pool
+    with Pool(16) as pool:                                   # each worker opens its own zip handle
+        for k, (name, g) in enumerate(pool.imap_unordered(_convert, jobs, chunksize=8)):
+            if k % 500 == 0: print(f"converted {k}/{len(jobs)}", flush=True)
+            if g is None: bad += 1; continue
+            W, H = g["image_size"]
+            for it in g["items"]:
+                tot_items += 1; inside += 0 <= it["point"][0] <= W and 0 <= it["point"][1] <= H
+            json.dump(g, open(os.path.join(a.out, name + ".json"), "w"))
+            done += 1
     print(f"converted {done} | zip entries not in our images {miss} | parse errors {bad} | items inside image {inside}/{tot_items}", flush=True)
     # check against Stoa's answers
     import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

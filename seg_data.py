@@ -89,6 +89,7 @@ if __name__ == "__main__":
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--gt2", default=""); ap.add_argument("--images2", default=""); ap.add_argument("--split2", default="")
     ap.add_argument("--limit2", type=int, default=2500)
+    ap.add_argument("--only2", action="store_true", help="train on the second source only (e.g. CubiCasa)")
     a = ap.parse_args()
     sp = json.load(open(a.split))
     train = sp.get("sft", []) + sp.get("exp", []); val = sp.get("holdout", [])[:30]
@@ -100,7 +101,7 @@ if __name__ == "__main__":
         sp2 = json.load(open(a.split2)); t2 = sp2["cubi_exp"][:a.limit2]
         for p in t2: src[p] = (a.gt2, a.images2)
         v2 = t2[-60:]; t2 = t2[:-60]
-        train, val = train + t2, val + v2
+        train, val = (t2, v2) if a.only2 else (train + t2, val + v2)
     for part, plans in (("train", train), ("val", val)):
         di, dl = os.path.join(a.out, "yolo", "images", part), os.path.join(a.out, "yolo", "labels", part)
         os.makedirs(di, exist_ok=True); os.makedirs(dl, exist_ok=True)
