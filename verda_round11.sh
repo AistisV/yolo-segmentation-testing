@@ -3,12 +3,18 @@
 #   bash verda_round11.sh            (everything; log in ~/r11/r11.log)
 # Needs only internet access; downloads the code, Stoa's public dataset and CubiCasa5k itself.
 set -euo pipefail
-W=~/r11; mkdir -p $W; cd $W
+W=/root/r11; mkdir -p $W; cd $W
 exec > >(tee -a $W/r11.log) 2>&1
 echo "$(date -u +%H:%M:%S) start"
 
+export DEBIAN_FRONTEND=noninteractive
+command -v git >/dev/null && python3 -c "import venv, ensurepip" 2>/dev/null || { apt-get update -qq && apt-get install -y -qq git python3-venv python3-pip >/dev/null; }
 [ -d code ] || git clone -q https://github.com/AistisV/yolo-segmentation-testing code
+[ -d venv ] || python3 -m venv venv
+source venv/bin/activate
+pip install -q -U pip
 pip install -q ultralytics segmentation-models-pytorch shapely opencv-python-headless pillow numpy 2>&1 | tail -2
+python3 -c "import torch; print('torch', torch.__version__, 'cuda', torch.cuda.is_available(), torch.cuda.get_device_name(0) if torch.cuda.is_available() else '')"
 
 # Stoa dataset: questions + CubiCasa images as Stoa renders them (the test images)
 if [ ! -f data/questions.jsonl ]; then
