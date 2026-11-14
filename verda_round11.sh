@@ -9,7 +9,7 @@ echo "$(date -u +%H:%M:%S) start"
 
 export DEBIAN_FRONTEND=noninteractive
 command -v git >/dev/null && python3 -c "import venv, ensurepip" 2>/dev/null || { apt-get update -qq && apt-get install -y -qq git python3-venv python3-pip >/dev/null; }
-[ -d code ] || git clone -q https://github.com/AistisV/yolo-segmentation-testing code
+[ -d code ] && git -C code pull -q || git clone -q https://github.com/AistisV/yolo-segmentation-testing code
 [ -d venv ] || python3 -m venv venv
 source venv/bin/activate
 pip install -q -U pip
@@ -49,9 +49,11 @@ EOF
 
 # CubiCasa5k itself: SVG labels + the images they are drawn on
 [ -f cubicasa5k.zip ] || python3 code/dl.py "https://zenodo.org/records/2613548/files/cubicasa5k.zip?download=1" cubicasa5k.zip --parts 16
+rm -rf gt11 orig11 check11 sd ckpt/yolo11c preds11     # a rerun starts the labels and training from scratch
 python3 code/cubi_gt.py --zip cubicasa5k.zip --images data/cubicasa5k --questions data/questions.jsonl \
     --out gt11 --orig-out orig11 --overlays check11
 echo "$(date -u +%H:%M:%S) label overlays in $W/check11 (look at one: boxes must sit on doors/windows)"
+[ "${LABELS_ONLY:-0}" = 1 ] && { echo "LABELS_ONLY: stopping before training"; exit 0; }
 
 cd code
 python3 seg_data.py --gt none --images none --split split_full.json --out $W/sd \

@@ -71,9 +71,14 @@ def area(p):
     return abs(sum(x1 * y2 - x2 * y1 for (x1, y1), (x2, y2) in zip(p, p[1:] + p[:1]))) / 2
 
 
-def parse_svg(data, W, H):
+def parse_svg(data, W, H, frame=None):
+    """frame = (w, h) of the image the SVG coordinates are drawn on (CubiCasa: F1_scaled.png pixels; the SVG's own
+    width/height is only the drawing's extent). Without it, the SVG's width/height is used (older behaviour)."""
     root = ET.fromstring(data)
-    sw = float(NUM.findall(root.get("width") or str(W))[0]); sh = float(NUM.findall(root.get("height") or str(H))[0])
+    if frame:
+        sw, sh = frame
+    else:
+        sw = float(NUM.findall(root.get("width") or str(W))[0]); sh = float(NUM.findall(root.get("height") or str(H))[0])
     sx, sy = W / sw, H / sh
     rooms, items = [], []
     parent = {c: p for p in root.iter() for c in p}
@@ -121,9 +126,10 @@ def _convert(job):
     try:
         if orig_out:
             im = Image.open(_ZF.open(n[:-len("model.svg")] + "F1_scaled.png")).convert("RGB")
+            frame = im.size                                  # SVG coordinates are F1_scaled.png pixels
             f_ = 2000 / max(im.size); W, H = round(im.width * f_), round(im.height * f_)
             im = im.resize((W, H), Image.BICUBIC)
-        g = parse_svg(_ZF.read(n), W, H)
+        g = parse_svg(_ZF.read(n), W, H, frame=frame if orig_out else None)
         if orig_out:
             im.save(os.path.join(orig_out, name + ".png"))
             if overlays and draw:
